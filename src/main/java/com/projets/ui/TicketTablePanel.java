@@ -2,8 +2,10 @@ package com.projets.ui;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.projets.api.CommentService;
 import com.projets.api.TicketService;
 import com.projets.util.JwtUtil;
+import com.projets.dto.CommentCreateDto;
 
 import javax.swing.*;
 import javax.swing.table.*;
@@ -23,11 +25,11 @@ public class TicketTablePanel extends JPanel {
 
     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-
     private JTable table;
     private DefaultTableModel tableModel;
     private String jwtToken;
     private TicketService ticketService;
+    private CommentService commentService;
 
     // Couleurs et polices personnalisées
     private static final Color PANEL_COLOR = new Color(245, 247, 250);
@@ -36,10 +38,10 @@ public class TicketTablePanel extends JPanel {
     private static final Font HEADER_FONT = new Font("Arial", Font.BOLD, 14);
     private static final Font TABLE_FONT = new Font("Arial", Font.PLAIN, 12);
 
-
     public TicketTablePanel(String jwtToken) {
         this.jwtToken = jwtToken;
         this.ticketService = new TicketService();
+        this.commentService = new CommentService();
         setLayout(new BorderLayout());
         setBackground(PANEL_COLOR);
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20)); // Marge autour du panneau
@@ -70,12 +72,11 @@ public class TicketTablePanel extends JPanel {
 
         // Définir les colonnes en fonction du rôle
         if ("IT_Support".equalsIgnoreCase(role)) {
-            return new String[]{"ID", "Titre", "Date", "Priority", "Category", "Status", "Update Status"};
+            return new String[]{"ID", "Titre", "Date", "Priority", "Category", "Status", "Update Status", "Comments"};
         } else {
             return new String[]{"ID", "Titre", "Date", "Priority", "Category", "Status"};
         }
     }
-
 
     private void styleTable() {
         // Personnalisation de l'en-tête du tableau
@@ -180,37 +181,31 @@ public class TicketTablePanel extends JPanel {
         TableColumnModel columnModel = table.getColumnModel();
         TableColumn updateStatusColumn = columnModel.getColumn(6); // Colonne "Update Status"
 
-        // Utiliser un ButtonRenderer pour afficher le bouton
-        updateStatusColumn.setCellRenderer(new ButtonRenderer());
+        // Utiliser un ButtonRenderer pour afficher le bouton "Update Status"
+        updateStatusColumn.setCellRenderer(new ButtonRenderer("Update Status"));
+        updateStatusColumn.setCellEditor(new ButtonEditor(new JCheckBox(), ticketService, false));
 
-        // Passer la référence de TicketService à ButtonEditor
-        updateStatusColumn.setCellEditor(new ButtonEditor(new JCheckBox(), ticketService));
-    }
-
-    class ButtonRenderer extends JButton implements TableCellRenderer {
-        public ButtonRenderer() {
-            setText("Update Status");
-            setOpaque(true);
-        }
-
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-            return this;
-        }
+        // Ajouter un bouton pour le commentaire dans une nouvelle colonne
+        TableColumn commentColumn = columnModel.getColumn(7); // Nouvelle colonne pour "Add Comment"
+        commentColumn.setCellRenderer(new ButtonRenderer("Add Comment"));
+        commentColumn.setCellEditor(new ButtonEditor(new JCheckBox(), ticketService, true));
     }
 
     class ButtonEditor extends DefaultCellEditor {
-        private TicketService ticketService;  // Ajouter une variable pour ticketService
+        private TicketService ticketService;  // TicketService pour la gestion des tickets
         private String label;
         private JButton button;
         private String ticketId;
+        private boolean isCommentButton;  // Boolean pour déterminer si c'est un bouton de commentaire ou de statut
 
-        // Constructeur modifié pour accepter ticketService
-        public ButtonEditor(JCheckBox checkBox, TicketService ticketService) {
+        public ButtonEditor(JCheckBox checkBox, TicketService ticketService, boolean isCommentButton) {
             super(checkBox);
-            this.ticketService = ticketService;  // Initialisation de ticketService
+            this.ticketService = ticketService;
+            this.isCommentButton = isCommentButton;
             button = new JButton();
             button.setOpaque(true);
+
+            // Action pour le bouton
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -218,9 +213,16 @@ public class TicketTablePanel extends JPanel {
                     int row = table.getSelectedRow();
                     ticketId = table.getValueAt(row, 0).toString();
 
-                    // Afficher un formulaire pour modifier le statut du ticket
-                    showUpdateStatusForm(ticketId);
-                    fireEditingStopped(); // Pour arrêter l'édition du bouton
+                    // Vérifier si le bouton est pour un commentaire ou pour la mise à jour du statut
+                    if (isCommentButton) {
+                        // Afficher un formulaire pour ajouter un commentaire
+                        showAddCommentForm(ticketId);
+                    } else {
+                        // Afficher un formulaire pour modifier le statut du ticket
+                        showUpdateStatusForm(ticketId);
+                    }
+
+                    fireEditingStopped(); // Arrêter l'édition du bouton
                 }
             });
         }
@@ -256,7 +258,8 @@ public class TicketTablePanel extends JPanel {
                         try {
                             ticketService.updateTicketStatus(ticketId, newStatus, userId, jwtToken);
                         } catch (Exception ex) {
-                            throw new RuntimeException(ex);
+                            ex.printStackTrace();
+                            JOptionPane.showMessageDialog(null, "Erreur lors de la mise à jour du statut.", "Erreur", JOptionPane.ERROR_MESSAGE);
                         }
 
                         refreshTickets(); // Rafraîchir le tableau après la mise à jour
@@ -272,23 +275,91 @@ public class TicketTablePanel extends JPanel {
             cancelButton.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    dialog.dispose(); // Fermer la boîte de dialogue sans changer le statut
+                    dialog.dispose(); // Fermer la boîte de dialogue sans modification
                 }
             });
 
-            // Ajouter les composants dans le dialogue
             dialog.add(statusLabel);
             dialog.add(statusComboBox);
             dialog.add(updateButton);
             dialog.add(cancelButton);
 
-            // Configurer la taille de la boîte de dialogue
-            dialog.setSize(300, 150);
-            dialog.setLocationRelativeTo(null); // Centrer la boîte de dialogue
+            dialog.setSize(400, 200);
+            dialog.setLocationRelativeTo(null);
             dialog.setVisible(true);
         }
 
+        private void showAddCommentForm(String ticketId) {
+            // Créer une boîte de dialogue pour saisir un commentaire
+            JDialog dialog = new JDialog((Frame) null, "Add Comment", true);
+            dialog.setLayout(new GridLayout(2, 2));
+
+            JLabel commentLabel = new JLabel("Comment:");
+            JTextArea commentArea = new JTextArea(3, 20);
+
+            JButton addButton = new JButton("Add");
+            JButton cancelButton = new JButton("Cancel");
+
+            addButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    String commentText = commentArea.getText().trim();
+                    if (!commentText.isEmpty()) {
+                        String userId = JwtUtil.extractUserId(jwtToken);
+
+                        // Ajouter le commentaire via le service
+                        try {
+                            CommentCreateDto createDto = new CommentCreateDto(ticketId, commentText, userId);
+                            commentService.addComment(createDto, jwtToken);  // Utiliser l'instance de CommentService
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            JOptionPane.showMessageDialog(null, "Erreur lors de l'ajout du commentaire.", "Erreur", JOptionPane.ERROR_MESSAGE);
+                        }
+                        dialog.dispose();
+                    } else {
+                        JOptionPane.showMessageDialog(dialog, "Le commentaire ne peut pas être vide.", "Erreur", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+
+            cancelButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    dialog.dispose(); // Fermer la boîte de dialogue sans ajouter le commentaire
+                }
+            });
+
+            dialog.add(commentLabel);
+            dialog.add(new JScrollPane(commentArea));
+            dialog.add(addButton);
+            dialog.add(cancelButton);
+
+            dialog.setSize(400, 200);
+            dialog.setLocationRelativeTo(null);
+            dialog.setVisible(true);
+        }
     }
+
+
+    class ButtonRenderer extends JButton implements TableCellRenderer {
+        private String label;
+
+        // Constructeur qui permet de personnaliser le texte du bouton
+        public ButtonRenderer(String label) {
+            setOpaque(true);
+            this.label = label;
+            setText(label);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            return this;
+        }
+    }
+
+
+
+
 
 
 }
