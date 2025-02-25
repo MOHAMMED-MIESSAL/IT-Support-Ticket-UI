@@ -2,12 +2,14 @@ package com.projets.ui;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.projets.api.TicketService;
+import com.projets.util.JwtUtil;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.JTableHeader;
-import javax.swing.table.DefaultTableCellRenderer; // Importation manquante
+import javax.swing.table.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -25,6 +27,7 @@ public class TicketTablePanel extends JPanel {
     private JTable table;
     private DefaultTableModel tableModel;
     private String jwtToken;
+    private TicketService ticketService;
 
     // Couleurs et polices personnalisées
     private static final Color PANEL_COLOR = new Color(245, 247, 250);
@@ -36,12 +39,13 @@ public class TicketTablePanel extends JPanel {
 
     public TicketTablePanel(String jwtToken) {
         this.jwtToken = jwtToken;
+        this.ticketService = new TicketService();
         setLayout(new BorderLayout());
         setBackground(PANEL_COLOR);
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20)); // Marge autour du panneau
 
-        // Définir les colonnes
-        String[] columns = {"ID", "Titre", "Date", "Priority", "Category", "Status"};
+        // Vérifier le rôle de l'utilisateur à partir du token JWT
+        String[] columns = getColumnsForUserRole();
         tableModel = new DefaultTableModel(columns, 0);
         table = new JTable(tableModel);
 
@@ -55,6 +59,21 @@ public class TicketTablePanel extends JPanel {
 
         // Charger les tickets
         loadTickets();
+        if ("IT_Support".equalsIgnoreCase(JwtUtil.extractRole(jwtToken))) {
+            addUpdateStatusButtons();
+        }
+    }
+
+    private String[] getColumnsForUserRole() {
+        // Extraire le rôle de l'utilisateur depuis le JWT
+        String role = JwtUtil.extractRole(jwtToken);
+
+        // Définir les colonnes en fonction du rôle
+        if ("IT_Support".equalsIgnoreCase(role)) {
+            return new String[]{"ID", "Titre", "Date", "Priority", "Category", "Status", "Update Status"};
+        } else {
+            return new String[]{"ID", "Titre", "Date", "Priority", "Category", "Status"};
+        }
     }
 
 
@@ -100,7 +119,6 @@ public class TicketTablePanel extends JPanel {
         // Ajuster la largeur des colonnes
         table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
     }
-
 
     private void loadTickets() {
         SwingWorker<List<Map<String, Object>>, Void> worker = new SwingWorker<>() {
@@ -156,5 +174,121 @@ public class TicketTablePanel extends JPanel {
     public void refreshTickets() {
         loadTickets();
     }
+
+    private void addUpdateStatusButtons() {
+        // Ajouter un renderer et un éditeur pour afficher les boutons
+        TableColumnModel columnModel = table.getColumnModel();
+        TableColumn updateStatusColumn = columnModel.getColumn(6); // Colonne "Update Status"
+
+        // Utiliser un ButtonRenderer pour afficher le bouton
+        updateStatusColumn.setCellRenderer(new ButtonRenderer());
+
+        // Passer la référence de TicketService à ButtonEditor
+        updateStatusColumn.setCellEditor(new ButtonEditor(new JCheckBox(), ticketService));
+    }
+
+    class ButtonRenderer extends JButton implements TableCellRenderer {
+        public ButtonRenderer() {
+            setText("Update Status");
+            setOpaque(true);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            return this;
+        }
+    }
+
+    class ButtonEditor extends DefaultCellEditor {
+        private TicketService ticketService;  // Ajouter une variable pour ticketService
+        private String label;
+        private JButton button;
+        private String ticketId;
+
+        // Constructeur modifié pour accepter ticketService
+        public ButtonEditor(JCheckBox checkBox, TicketService ticketService) {
+            super(checkBox);
+            this.ticketService = ticketService;  // Initialisation de ticketService
+            button = new JButton();
+            button.setOpaque(true);
+            button.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    // Récupérer l'ID du ticket à partir de la ligne sélectionnée
+                    int row = table.getSelectedRow();
+                    ticketId = table.getValueAt(row, 0).toString();
+
+                    // Afficher un formulaire pour modifier le statut du ticket
+                    showUpdateStatusForm(ticketId);
+                    fireEditingStopped(); // Pour arrêter l'édition du bouton
+                }
+            });
+        }
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            label = (value == null) ? "" : value.toString();
+            button.setText(label);
+            return button;
+        }
+
+        private void showUpdateStatusForm(String ticketId) {
+            // Créer une boîte de dialogue pour changer le statut
+            JDialog dialog = new JDialog((Frame) null, "Update Ticket Status", true);
+            dialog.setLayout(new GridLayout(3, 2));
+
+            JLabel statusLabel = new JLabel("New Status:");
+            String[] statusOptions = {"IN_PROGRESS", "RESOLVED"};
+            JComboBox<String> statusComboBox = new JComboBox<>(statusOptions);
+
+            JButton updateButton = new JButton("Update");
+            JButton cancelButton = new JButton("Cancel");
+
+            // Action pour le bouton "Update"
+            updateButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    String newStatus = (String) statusComboBox.getSelectedItem();
+                    String userId = JwtUtil.extractUserId(jwtToken);
+
+                    // Mettre à jour le statut du ticket
+                    if (ticketService != null) {
+                        try {
+                            ticketService.updateTicketStatus(ticketId, newStatus, userId, jwtToken);
+                        } catch (Exception ex) {
+                            throw new RuntimeException(ex);
+                        }
+
+                        refreshTickets(); // Rafraîchir le tableau après la mise à jour
+                    } else {
+                        JOptionPane.showMessageDialog(null, "Ticket service is not initialized.", "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+
+                    dialog.dispose(); // Fermer la boîte de dialogue après mise à jour
+                }
+            });
+
+            // Action pour le bouton "Cancel"
+            cancelButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    dialog.dispose(); // Fermer la boîte de dialogue sans changer le statut
+                }
+            });
+
+            // Ajouter les composants dans le dialogue
+            dialog.add(statusLabel);
+            dialog.add(statusComboBox);
+            dialog.add(updateButton);
+            dialog.add(cancelButton);
+
+            // Configurer la taille de la boîte de dialogue
+            dialog.setSize(300, 150);
+            dialog.setLocationRelativeTo(null); // Centrer la boîte de dialogue
+            dialog.setVisible(true);
+        }
+
+    }
+
 
 }
