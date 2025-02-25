@@ -17,10 +17,12 @@ public class LoginFrame extends JFrame {
 
     // Couleurs du thème
     private final Color BACKGROUND_COLOR = new Color(245, 247, 250);
-    private final Color PRIMARY_BLUE = new Color(25, 118, 210);
-    private final Color LIGHT_BLUE = new Color(64, 169, 255);
-    private final Color DARK_BLUE = new Color(12, 84, 157);
-    private final Color TEXT_COLOR = new Color(33, 33, 33);
+    private final Color PRIMARY_BLUE = new Color(34, 139, 34); // Vert principal
+    private final Color LIGHT_BLUE =  new Color(50, 205, 50);   // Vert clair
+    private final Color DARK_BLUE = new Color(0, 100, 0);      // Vert foncé
+    private final Color TEXT_COLOR =  new Color(33, 33, 33);
+    private final Color PANEL_COLOR = new Color(255, 255, 255);
+    private final Color BORDER_COLOR = new Color(225, 232, 240);
 
     public LoginFrame() {
         setTitle("IT Support - Connexion");

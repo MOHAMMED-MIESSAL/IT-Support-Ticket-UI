@@ -11,6 +11,7 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 
 import javax.swing.*;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -45,7 +46,7 @@ public class TicketService {
 
     public static void updateTicketStatus(String ticketId, String newStatus, String userId, String jwtToken) throws Exception {
         // URL de l'API
-        URL url = new URL("http://localhost:8083/api/v1/tickets/status/" + ticketId );
+        URL url = new URL("http://localhost:8083/api/v1/tickets/status/" + ticketId);
 
         // Ouverture de la connexion HTTP
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -71,7 +72,13 @@ public class TicketService {
 
         // Vérifier la réponse du serveur
         if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-            throw new RuntimeException("Erreur HTTP : " + conn.getResponseCode());
+            // Lire la réponse d'erreur
+            try (InputStream errorStream = conn.getErrorStream();
+                 InputStreamReader in = new InputStreamReader(errorStream);
+                 BufferedReader reader = new BufferedReader(in)) {
+                String errorResponse = reader.lines().collect(Collectors.joining("\n"));
+                throw new RuntimeException("Erreur HTTP : " + conn.getResponseCode() + "\nRéponse serveur : " + errorResponse);
+            }
         } else {
             // Optionnel: Traiter la réponse si nécessaire
             try (InputStreamReader in = new InputStreamReader(conn.getInputStream());

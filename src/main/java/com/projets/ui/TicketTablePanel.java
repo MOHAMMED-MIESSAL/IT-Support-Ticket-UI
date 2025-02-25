@@ -30,6 +30,9 @@ public class TicketTablePanel extends JPanel {
     private String jwtToken;
     private TicketService ticketService;
     private CommentService commentService;
+    private JComboBox<String> statusFilterComboBox;
+    private DefaultTableModel model;
+
 
     // Couleurs et polices personnalisées
     private static final Color PANEL_COLOR = new Color(245, 247, 250);
@@ -42,6 +45,9 @@ public class TicketTablePanel extends JPanel {
         this.jwtToken = jwtToken;
         this.ticketService = new TicketService();
         this.commentService = new CommentService();
+        String[] columnNames = getColumnsForUserRole();  // Obtenir les colonnes selon le rôle
+        model = new DefaultTableModel(columnNames, 0);
+
         setLayout(new BorderLayout());
         setBackground(PANEL_COLOR);
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20)); // Marge autour du panneau
@@ -64,6 +70,8 @@ public class TicketTablePanel extends JPanel {
         if ("IT_Support".equalsIgnoreCase(JwtUtil.extractRole(jwtToken))) {
             addUpdateStatusButtons();
         }
+
+
     }
 
     private String[] getColumnsForUserRole() {
@@ -358,6 +366,56 @@ public class TicketTablePanel extends JPanel {
     }
 
 
+    public void refreshTicketsWithSingleTicket(Map<String, Object> ticket) {
+        tableModel.setRowCount(0); // Effacer les données existantes
+
+        Object dateObj = ticket.get("creationDate");
+        String formattedDate = "";
+
+        if (dateObj instanceof String) {
+            formattedDate = LocalDateTime.parse((String) dateObj).format(formatter);
+        }
+
+        // Ajouter une ligne avec les informations du ticket
+        tableModel.addRow(new Object[]{
+                ticket.get("id"),
+                ticket.get("title"),
+                formattedDate,  // Date formatée
+                ticket.get("priority"),
+                ticket.get("category"),
+                ticket.get("status")
+        });
+    }
+
+
+    public void refreshTicketsWithFilteredList(List<Map<String, Object>> tickets) {
+        // Effacer les données existantes du tableau
+        tableModel.setRowCount(0);
+
+        // Parcourir la liste des tickets filtrés
+        for (Map<String, Object> ticket : tickets) {
+            // Formater la date de création si nécessaire
+            Object dateObj = ticket.get("creationDate");
+            String formattedDate = "";
+
+            if (dateObj instanceof String) {
+                formattedDate = LocalDateTime.parse((String) dateObj).format(formatter);
+            }
+
+            // Ajouter une ligne avec les informations du ticket
+            tableModel.addRow(new Object[]{
+                    ticket.get("id"),
+                    ticket.get("title"),
+                    formattedDate,  // Date formatée
+                    ticket.get("priority"),
+                    ticket.get("category"),
+                    ticket.get("status")
+            });
+        }
+
+        // Revalider pour mettre à jour l'affichage de la table
+        table.revalidate();
+    }
 
 
 

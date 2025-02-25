@@ -1,5 +1,8 @@
 package com.projets.ui;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.projets.dto.TicketResponse;
 import com.projets.util.JwtUtil;
 
 import javax.swing.*;
@@ -7,6 +10,17 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 
 public class DashboardFrame extends JFrame {
 
@@ -15,10 +29,10 @@ public class DashboardFrame extends JFrame {
 
     // Couleurs du thème (mêmes que LoginFrame)
     private final Color BACKGROUND_COLOR = new Color(245, 247, 250);
-    private final Color PRIMARY_BLUE = new Color(25, 118, 210);
-    private final Color LIGHT_BLUE = new Color(64, 169, 255);
-    private final Color DARK_BLUE = new Color(12, 84, 157);
-    private final Color TEXT_COLOR = new Color(33, 33, 33);
+    private final Color PRIMARY_BLUE = new Color(34, 139, 34); // Vert principal
+    private final Color LIGHT_BLUE =  new Color(50, 205, 50);   // Vert clair
+    private final Color DARK_BLUE = new Color(0, 100, 0);      // Vert foncé
+    private final Color TEXT_COLOR =  new Color(33, 33, 33);
     private final Color PANEL_COLOR = new Color(255, 255, 255);
     private final Color BORDER_COLOR = new Color(225, 232, 240);
 
@@ -32,9 +46,6 @@ public class DashboardFrame extends JFrame {
         String role = JwtUtil.extractRole(jwtToken);
         String userId = JwtUtil.extractUserId(jwtToken);
 
-        // Afficher le rôle et l'ID dans l'interface utilisateur
-//        System.out.println("Rôle : " + role);
-//        System.out.println("ID utilisateur : " + userId);
 
         setTitle("Tableau de bord - Système de Support IT");
         setSize(800, 600);
@@ -233,6 +244,57 @@ public class DashboardFrame extends JFrame {
         topPanel.setBackground(PANEL_COLOR);
         topPanel.add(contentTitle, BorderLayout.WEST);
 
+        // 1. Ajout de la barre de recherche
+        JPanel searchPanel = new JPanel();
+        searchPanel.setBackground(PANEL_COLOR);
+        searchPanel.setBorder(new EmptyBorder(10, 0, 10, 0));
+
+        JTextField searchField = new JTextField(15);
+        searchField.setFont(new Font("Arial", Font.PLAIN, 12));
+        searchField.setToolTipText("Rechercher par ID de ticket");
+
+        JButton searchButton = new JButton("Rechercher");
+        searchButton.setFont(new Font("Arial", Font.BOLD, 12));
+        searchButton.setBackground(PRIMARY_BLUE);
+        searchButton.setForeground(Color.WHITE);
+        searchButton.setFocusPainted(false);
+
+        // Ajout du bouton de réinitialisation
+        JButton resetButton = new JButton("Réinitialiser");
+        resetButton.setFont(new Font("Arial", Font.BOLD, 12));
+        resetButton.setBackground(DARK_BLUE);
+        resetButton.setForeground(Color.WHITE);
+        resetButton.setFocusPainted(false);
+
+        // Ajouter la zone de recherche, le bouton de recherche et le bouton de réinitialisation
+        searchPanel.add(new JLabel("ID du Ticket : "));
+        searchPanel.add(searchField);
+        searchPanel.add(searchButton);
+        searchPanel.add(resetButton);  // Ajouter le bouton "Réinitialiser"
+
+        // Création du JComboBox pour filtrer par statut
+        String[] statuses = {"NEW", "IN_PROGRESS", "RESOLVED"}; // Liste des statuts
+        JComboBox<String> statusComboBox = new JComboBox<>(statuses);
+        statusComboBox.setFont(new Font("Arial", Font.PLAIN, 12));
+        statusComboBox.setToolTipText("Filtrer par statut");
+
+        JButton filterButton = new JButton("Filtrer");
+        filterButton.setFont(new Font("Arial", Font.BOLD, 12));
+        filterButton.setBackground(PRIMARY_BLUE);
+        filterButton.setForeground(Color.WHITE);
+        filterButton.setFocusPainted(false);
+
+        // Ajout de la comboBox et du bouton de filtrage
+        JPanel filterPanel = new JPanel();
+        filterPanel.setBackground(PANEL_COLOR);
+        filterPanel.setBorder(new EmptyBorder(10, 0, 10, 0));
+        filterPanel.add(new JLabel("Filtrer par statut : "));
+        filterPanel.add(statusComboBox);
+        filterPanel.add(filterButton);
+
+        topPanel.add(searchPanel, BorderLayout.NORTH);
+        topPanel.add(filterPanel, BorderLayout.SOUTH);
+
         // ✅ Réintégration du TicketTablePanel pour afficher les tickets
         TicketTablePanel ticketTablePanel = new TicketTablePanel(jwtToken);
 
@@ -258,6 +320,78 @@ public class DashboardFrame extends JFrame {
             topPanel.add(addTicketButton, BorderLayout.EAST);
         }
 
+        // Action pour le bouton de recherche
+        searchButton.addActionListener(e -> {
+            String ticketId = searchField.getText().trim();
+            if (!ticketId.isEmpty()) {
+                try {
+                    URL url = new URL("http://localhost:8083/api/v1/tickets/" + ticketId);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("Authorization", "Bearer " + jwtToken);
+
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    Map<String, Object> ticket = objectMapper.readValue(reader, new TypeReference<>() {
+                    });
+                    reader.close();
+
+                    // Afficher le ticket dans le tableau
+                    ticketTablePanel.refreshTicketsWithSingleTicket(ticket);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(this, "Ticket non trouvé", "Erreur", JOptionPane.ERROR_MESSAGE);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Veuillez entrer un ID de ticket", "Erreur", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // Action pour le bouton de réinitialisation
+        resetButton.addActionListener(e -> {
+            searchField.setText("");  // Vider le champ de recherche
+            ticketTablePanel.refreshTickets();  // Réafficher tous les tickets
+        });
+
+        // Action pour le bouton de filtrage
+        filterButton.addActionListener(e -> {
+            String selectedStatus = (String) statusComboBox.getSelectedItem(); // Récupérer le statut sélectionné
+            if (selectedStatus != null && !selectedStatus.isEmpty()) {
+                try {
+                    // Construire l'URL pour filtrer par statut
+                    URL url = new URL("http://localhost:8083/api/v1/tickets/status?status=" + selectedStatus);
+                    System.out.println("URL de la requête : " + url); // Debug
+
+                    // Ouvrir une connexion HTTP
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("Authorization", "Bearer " + jwtToken);
+
+                    // Lire la réponse JSON
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    String response = reader.lines().collect(Collectors.joining());
+                    System.out.println("Réponse de l'API : " + response); // Debug
+
+                    // Désérialiser la réponse JSON en une liste de tickets
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    Map<String, Object> responseMap = objectMapper.readValue(response, new TypeReference<Map<String, Object>>() {
+                    });
+                    List<Map<String, Object>> tickets = (List<Map<String, Object>>) responseMap.get("content");
+
+                    reader.close();
+
+                    // Afficher les tickets filtrés dans le tableau
+                    ticketTablePanel.refreshTicketsWithFilteredList(tickets);
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(this, "Erreur de filtrage des tickets", "Erreur", JOptionPane.ERROR_MESSAGE);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Veuillez sélectionner un statut", "Erreur", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
 
         // Panneau des tickets récents
         JPanel recentTicketsPanel = new JPanel(new BorderLayout());
@@ -277,8 +411,6 @@ public class DashboardFrame extends JFrame {
 
         return contentPanel;
     }
-
-
 
 
 }
